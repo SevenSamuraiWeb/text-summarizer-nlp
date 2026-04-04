@@ -16,6 +16,8 @@ from rouge_score import rouge_scorer
 from functions import draw_graph,get_abs_summary,get_textrank_embed_summary,get_textrank_word_summary
 import plotly.express as px
 
+nltk.download('punkt')
+nltk.download('stopwords')
 stopwords = set(stopwords.words("english"))
 
 @st.cache_resource
