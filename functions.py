@@ -12,6 +12,9 @@ from sentence_transformers import SentenceTransformer
 import streamlit as st
 from transformers import pipeline
 from sklearn.metrics.pairwise import cosine_similarity
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
 
 stop_words = set(stopwords.words("english"))
 
@@ -154,3 +157,31 @@ def get_textrank_word_summary(input_text : str):
             return ext_summary
         else:
             return "No overlapping words found"
+        
+
+def get_llm_summary(input_text,model="google/gemma-4-26b-a4b-it"):
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        return "OpenRouter API key not found. Please add OPENROUTER_API_KEY to your .env file."
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+    )
+    if input_text:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a professional text summarization assistant. Your task is to provide only the summarized text with no explanations, preambles, or additional commentary. Output only the summary."
+                },
+                {
+                "role": "user",
+                "content": f"Summarize the following text :\n\n {input_text}"
+                }
+            ],
+            max_tokens=1000
+        )
+        return completion.choices[0].message.content
+    else:
+        return "Input text not provided"

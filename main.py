@@ -1,6 +1,5 @@
 import math
 import os
-from typing import List
 import numpy as np
 import streamlit as st
 import nltk
@@ -14,13 +13,13 @@ import plotly.graph_objects as go
 from transformers import pipeline
 from datasets import load_dataset
 from rouge_score import rouge_scorer
-from functions import draw_graph,get_abs_summary,get_textrank_embed_summary,get_textrank_word_summary
+from functions import draw_graph,get_abs_summary,get_textrank_embed_summary,get_textrank_word_summary,get_llm_summary
 import plotly.express as px
 from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
-
+st.set_page_config(layout="wide")
 nltk.download('punkt')
 nltk.download('stopwords')
 stopwords = set(stopwords.words("english"))
@@ -199,20 +198,25 @@ elif method == "LLM":
     input_text = st.text_area(label="Enter your text here",height="content")
     if input_text:
         completion = client.chat.completions.create(
-            model="openai/gpt-5.2",
+            model="google/gemma-4-26b-a4b-it",
             messages=[
                 {
+                    "role": "system",
+                    "content": "You are a professional text summarization assistant. Your task is to provide only the summarized text with no explanations, preambles, or additional commentary. Output only the summary."
+                },
+                {
                 "role": "user",
-                "content": f"Summarize : {input_text}"
+                "content": f"Summarize the following text :\n\n {input_text}"
                 }
-            ]
+            ],
+            max_tokens=1000
         )
-        print(completion.choices[0].message.content)
+        st.success(completion.choices[0].message.content)
 
 else:
     samples = get_cnndaily_samples(10)
     sample_idx = st.sidebar.selectbox("Select CNN Sample", range(len(samples)))
-    rouge_metric = st.sidebar.selectbox("Select ROUGE Metric", options=["Precision","Recall","F1 Score"])
+    rouge_metric = st.sidebar.selectbox("Select ROUGE Metric", options=["F1 Score","Precision","Recall"])
     abstractive_model = st.sidebar.selectbox("Select Abstractive Model", options=["facebook/bart-large-cnn","google/flan-t5-base","t5-base"])
 
     current_sample = samples[sample_idx]
@@ -226,9 +230,9 @@ else:
     st.text(current_input,width='content')
 
     st.header("Highlights of the article - Ideal summary")
-    st.text(gold_summary,width='content')
+    st.success(gold_summary,width='stretch')
 
-    col1,col2,col3 = st.columns(3,border=True)
+    col1,col2,col3,col4 = st.columns([1.5,1.5,1.5,1.5],gap="small",border=True)
     with col1:
         st.subheader("TextRank using Embeddings")
         embed_summary = get_textrank_embed_summary(input_text=current_input)
@@ -244,19 +248,26 @@ else:
         abs_summary = get_abs_summary(input_text=current_input,model_name=abstractive_model,mini=min_len,maxi=max_len)
         st.write(abs_summary)
 
+    with col4:
+        st.subheader(f"LLM summarization gemma-4-26b")
+        llm_summary = get_llm_summary(input_text=current_input)
+        st.write(llm_summary)
+
     compression_word = calculate_compression_ratio(current_input,word_summary)
     compression_embed = calculate_compression_ratio(current_input,embed_summary)
     compression_abs = calculate_compression_ratio(current_input,abs_summary)
+    compression_llm = calculate_compression_ratio(current_input,llm_summary)
     compression_ideal = calculate_compression_ratio(current_input,gold_summary)
 
     scores_word = calculate_metrics(gold_summary, embed_summary,rouge_metric)
     scores_embed = calculate_metrics(gold_summary, word_summary,rouge_metric)
     scores_abs = calculate_metrics(gold_summary, abs_summary,rouge_metric)
+    scores_llm = calculate_metrics(gold_summary, llm_summary,rouge_metric)
 
     comp_data = {
-        "Metric" : ["Compression Ratio"] * 4,
-        "Score" : [compression_word,compression_embed,compression_abs,compression_ideal],
-        "Model" : ["Word Overlap","Embeddings","Abstractive","Ideal"]
+        "Metric" : ["Compression Ratio"] * 5,
+        "Score" : [compression_word,compression_embed,compression_abs,compression_llm,compression_ideal],
+        "Model" : ["Word Overlap","Embeddings","Abstractive","LLM","Ideal"]
     }
 
     df_plot = pd.DataFrame(comp_data)
@@ -264,13 +275,14 @@ else:
     st.plotly_chart(fig)
 
     score_data = {
-        "Metric": ["ROUGE-1", "ROUGE-2", "ROUGE-L"] * 3,
+        "Metric": ["ROUGE-1", "ROUGE-2", "ROUGE-L"] * 4,
         "Score": [
             scores_word['R-1'], scores_word['R-2'], scores_word['R-L'],
             scores_embed['R-1'], scores_embed['R-2'], scores_embed['R-L'],
-            scores_abs['R-1'], scores_abs['R-2'], scores_abs['R-L']
+            scores_abs['R-1'], scores_abs['R-2'], scores_abs['R-L'],
+            scores_llm['R-1'], scores_llm['R-2'], scores_llm['R-L'],
         ],
-        "Model": ["Word Overlap"]*3 + ["Embeddings"]*3 + ["Abstractive"]*3
+        "Model": ["Word Overlap"]*3 + ["Embeddings"]*3 + ["Abstractive"]*3 + ["LLM"]*3
     }
 
     df_plot = pd.DataFrame(score_data)
