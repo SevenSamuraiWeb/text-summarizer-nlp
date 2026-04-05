@@ -1,4 +1,5 @@
 import math
+import os
 from typing import List
 import numpy as np
 import streamlit as st
@@ -15,6 +16,10 @@ from datasets import load_dataset
 from rouge_score import rouge_scorer
 from functions import draw_graph,get_abs_summary,get_textrank_embed_summary,get_textrank_word_summary
 import plotly.express as px
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 nltk.download('punkt')
 nltk.download('stopwords')
@@ -58,7 +63,7 @@ def calculate_compression_ratio(original,summary):
 
 
 with st.sidebar:
-    method = st.radio(label="Summarization Method",options=["Embeddings","Word Overlap","Abstractive","Compare"])
+    method = st.radio(label="Summarization Method",options=["Embeddings","Word Overlap","Abstractive","LLM","Compare"])
 
 if method == "Embeddings":
     st.title(f"Text Summarization : {method} TextRank")
@@ -181,6 +186,29 @@ elif method == "Abstractive":
                 st.success(abs_summary[0]['summary_text'])
             else:
                 st.error("Unexpected output format from the summarization model.")
+
+elif method == "LLM":
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        st.error("OpenRouter API key not found. Please add OPENROUTER_API_KEY to your .env file.")
+        st.stop()
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+    )
+    input_text = st.text_area(label="Enter your text here",height="content")
+    if input_text:
+        completion = client.chat.completions.create(
+            model="openai/gpt-5.2",
+            messages=[
+                {
+                "role": "user",
+                "content": f"Summarize : {input_text}"
+                }
+            ]
+        )
+        print(completion.choices[0].message.content)
+
 else:
     samples = get_cnndaily_samples(10)
     sample_idx = st.sidebar.selectbox("Select CNN Sample", range(len(samples)))
