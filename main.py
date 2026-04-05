@@ -29,15 +29,32 @@ def get_cnndaily_samples(n:int):
     ds = load_dataset("cnn_dailymail", "3.0.0", split="test", streaming=True)
     return list(ds.take(n))
 
-def calculate_metrics(target, prediction):
+def calculate_metrics(target, prediction,metric:str):
     scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
     scores = scorer.score(target, prediction)
-    return {
-        "R-1": round(scores['rouge1'].fmeasure, 3),
-        "R-2": round(scores['rouge2'].fmeasure, 3),
-        "R-L": round(scores['rougeL'].fmeasure, 3)
-    }
+    
+    if metric == "F1 Score":
+        return {
+            "R-1": round(scores['rouge1'].fmeasure, 3),
+            "R-2": round(scores['rouge2'].fmeasure, 3),
+            "R-L": round(scores['rougeL'].fmeasure, 3)
+        }
+    elif metric == "Precision":
+        return {
+            "R-1": round(scores['rouge1'].precision, 3),
+            "R-2": round(scores['rouge2'].precision, 3),
+            "R-L": round(scores['rougeL'].precision, 3)
+        }
+    else:
+        return {
+            "R-1": round(scores['rouge1'].recall, 3),
+            "R-2": round(scores['rouge2'].recall, 3),
+            "R-L": round(scores['rougeL'].recall, 3)
+        }
 
+
+def calculate_compression_ratio(original,summary):
+    return len(summary) / len(original)
 
 
 with st.sidebar:
@@ -78,7 +95,8 @@ if method == "Embeddings":
         st.plotly_chart(fig, width='stretch')       
         st.header("\n\nRun pagerank algorithm on the graph")
         if len(G.edges()) > 0:
-            scores = nx.pagerank(G, weight='weight')
+            damping = st.slider(label="Select damping factor",min_value=0.0,max_value=1.0)
+            scores = nx.pagerank(G, weight='weight',alpha=damping)
             ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
             st.json(scores)
             N = min(3, len(sentences))
@@ -132,6 +150,7 @@ elif method == "Word Overlap":
 
         st.header("5. Sentence Scores & Final Summary")            
         if len(G.edges()) > 0:
+            damping = st.slider(label="Select damping factor",value=0.85,min_value=0.0,max_value=1.0)
             scores = nx.pagerank(G, weight='weight')
             ranked_sentences = sorted(((scores[i], s) for i, s in enumerate(sentences)), reverse=True)
             st.json(scores)
@@ -165,9 +184,15 @@ elif method == "Abstractive":
 else:
     samples = get_cnndaily_samples(10)
     sample_idx = st.sidebar.selectbox("Select CNN Sample", range(len(samples)))
+    rouge_metric = st.sidebar.selectbox("Select ROUGE Metric", options=["Precision","Recall","F1 Score"])
+    abstractive_model = st.sidebar.selectbox("Select Abstractive Model", options=["facebook/bart-large-cnn","google/flan-t5-base","t5-base"])
+
     current_sample = samples[sample_idx]
     current_input = str(current_sample['article'])
     gold_summary = str(current_sample['highlights'])
+
+    min_len = st.sidebar.number_input("Select Min Length",max_value=len(current_input))
+    max_len = st.sidebar.number_input("Select Max Length",max_value=len(current_input))
     
     st.header("News article from CNN/DailyMail dataset")
     st.text(current_input,width='content')
@@ -187,15 +212,30 @@ else:
         st.write(word_summary)
 
     with col3:
-        st.subheader("Abstractive summarization BART")
-        abs_summary = get_abs_summary(input_text=current_input,model_name="facebook/bart-large-cnn")
+        st.subheader(f"Abstractive summarization {abstractive_model}")
+        abs_summary = get_abs_summary(input_text=current_input,model_name=abstractive_model,mini=min_len,maxi=max_len)
         st.write(abs_summary)
 
-    scores_word = calculate_metrics(gold_summary, embed_summary)
-    scores_embed = calculate_metrics(gold_summary, word_summary)
-    scores_abs = calculate_metrics(gold_summary, abs_summary)
+    compression_word = calculate_compression_ratio(current_input,word_summary)
+    compression_embed = calculate_compression_ratio(current_input,embed_summary)
+    compression_abs = calculate_compression_ratio(current_input,abs_summary)
+    compression_ideal = calculate_compression_ratio(current_input,gold_summary)
 
-    data = {
+    scores_word = calculate_metrics(gold_summary, embed_summary,rouge_metric)
+    scores_embed = calculate_metrics(gold_summary, word_summary,rouge_metric)
+    scores_abs = calculate_metrics(gold_summary, abs_summary,rouge_metric)
+
+    comp_data = {
+        "Metric" : ["Compression Ratio"] * 4,
+        "Score" : [compression_word,compression_embed,compression_abs,compression_ideal],
+        "Model" : ["Word Overlap","Embeddings","Abstractive","Ideal"]
+    }
+
+    df_plot = pd.DataFrame(comp_data)
+    fig = px.bar(df_plot, x='Metric', y='Score', color='Model', barmode='group', title="Summary Length Comparison")
+    st.plotly_chart(fig)
+
+    score_data = {
         "Metric": ["ROUGE-1", "ROUGE-2", "ROUGE-L"] * 3,
         "Score": [
             scores_word['R-1'], scores_word['R-2'], scores_word['R-L'],
@@ -205,9 +245,11 @@ else:
         "Model": ["Word Overlap"]*3 + ["Embeddings"]*3 + ["Abstractive"]*3
     }
 
-    df_plot = pd.DataFrame(data)
-    fig = px.bar(df_plot, x='Metric', y='Score', color='Model', barmode='group', title="Performance Comparison")
+    df_plot = pd.DataFrame(score_data)
+    fig = px.bar(df_plot, x='Metric', y='Score', color='Model', barmode='group', title="Relevance Comparison")
     st.plotly_chart(fig)
+
+    
 
 
 

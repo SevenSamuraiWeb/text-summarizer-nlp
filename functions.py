@@ -64,7 +64,7 @@ def draw_graph(sim_matrix:np.ndarray,sentences:List[str]):
         return G,fig
 
 
-def get_abs_summary(input_text : str,model_name:str):
+def get_abs_summary(input_text : str,model_name:str,mini:int=0,maxi:int=0):
     models = ["facebook/bart-large-cnn","google/flan-t5-base","t5-base"]
     if model_name in models:
         summarizer = pipeline(task="summarization",model=model_name)
@@ -72,12 +72,14 @@ def get_abs_summary(input_text : str,model_name:str):
             if summarizer.tokenizer is None:
                 return "Error"
             tokens = len(summarizer.tokenizer.encode(input_text))
-            max_len = min(300, int(tokens * 0.5))
-            min_len = max(30, int(tokens * 0.15))
+            if mini <= 0:
+                mini = max(30, int(tokens * 0.15))
+            if maxi <= 0:    
+                maxi = min(300, int(tokens * 0.5))
             abs_summary = summarizer(
                 input_text, 
-                max_length=max_len, 
-                min_length=min_len, 
+                max_length=maxi, 
+                min_length=mini, 
                 do_sample=True,
                 temperature=0.7,
                 no_repeat_ngram_size=3,
