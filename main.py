@@ -99,7 +99,7 @@ if method == "Embeddings":
         st.plotly_chart(fig, width='stretch')       
         st.header("\n\nRun pagerank algorithm on the graph")
         if len(G.edges()) > 0:
-            damping = st.slider(label="Select damping factor",min_value=0.0,max_value=1.0)
+            damping = st.slider(label="Select damping factor",value=0.85,min_value=0.0,max_value=1.0)
             scores = nx.pagerank(G, weight='weight',alpha=damping)
             ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
             st.json(scores)
@@ -173,8 +173,8 @@ elif method == "Abstractive":
     summarizer = pipeline(task="summarization",model=model)
     input_text = st.text_area(label="Enter your text here",height="content")
     if input_text:
-        min_len = st.number_input(label="Enter minimum length here",min_value=5,max_value=len(input_text))
-        max_len = st.number_input(label="Enter maximum length here",min_value=5,max_value=len(input_text))
+        min_len = st.number_input(label="Enter minimum length here",min_value=20,max_value=len(input_text))
+        max_len = st.number_input(label="Enter maximum length here",min_value=50,max_value=len(input_text))
         if min_len and max_len:
             if summarizer.tokenizer is None:
                 st.error("Tokenizer is not available for the selected model.")
@@ -259,8 +259,8 @@ else:
     compression_llm = calculate_compression_ratio(current_input,llm_summary)
     compression_ideal = calculate_compression_ratio(current_input,gold_summary)
 
-    scores_word = calculate_metrics(gold_summary, embed_summary,rouge_metric)
-    scores_embed = calculate_metrics(gold_summary, word_summary,rouge_metric)
+    scores_word = calculate_metrics(gold_summary, word_summary,rouge_metric)
+    scores_embed = calculate_metrics(gold_summary, embed_summary,rouge_metric)
     scores_abs = calculate_metrics(gold_summary, abs_summary,rouge_metric)
     scores_llm = calculate_metrics(gold_summary, llm_summary,rouge_metric)
 
@@ -288,6 +288,16 @@ else:
     df_plot = pd.DataFrame(score_data)
     fig = px.bar(df_plot, x='Metric', y='Score', color='Model', barmode='group', title="Relevance Comparison")
     st.plotly_chart(fig)
+
+    st.header("Detailed Metrics Comparison")
+    comparison_df = pd.DataFrame({
+        "Model": ["Word Overlap", "Embeddings", "Abstractive", "LLM", "Ideal"],
+        "Compression": [compression_word, compression_embed, compression_abs, compression_llm, compression_ideal],
+        "ROUGE-1": [scores_word['R-1'], scores_embed['R-1'], scores_abs['R-1'], scores_llm['R-1'], 1.0],
+        "ROUGE-2": [scores_word['R-2'], scores_embed['R-2'], scores_abs['R-2'], scores_llm['R-2'], 1.0],
+        "ROUGE-L": [scores_word['R-L'], scores_embed['R-L'], scores_abs['R-L'], scores_llm['R-L'], 1.0]
+    })
+    st.dataframe(comparison_df)
 
     
 
